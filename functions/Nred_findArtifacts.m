@@ -1,4 +1,4 @@
-function hox5_findArtifacts()
+function Nred_findArtifacts()
 
 [filename,pathname] = uigetfile({'*.tif';'*.TIFF'},'Open file', 'MultiSelect', 'off');
 fileName=fullfile(pathname,filename);
