@@ -10,6 +10,7 @@ To compare calcium responses of labeled neuronal sub-populations
   1. CAIMAN: https://github.com/flatironinstitute/CaImAn-MATLAB
   2. Calcium analysis basic functions: https://github.com/zebrain-lab/Toolbox-Romano-et-al
   3. Plot2svg: https://github.com/jschwizer99/plot2svg
+  4. Add all fonctions to your paths 
 
 I- REGISTRATION
   1. First split the video in two colors using imageJ
