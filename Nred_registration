@@ -1,0 +1,41 @@
+
+%%%%%%%%%%%%%%%%%%%%%%
+%%    KEY SCRIPT    %%
+%%%%%%%%%%%%%%%%%%%%%%
+%v1.0 31/10/2020
+%Videos registration 
+%Adapted from runpipeline, Caiman Toolbox, Giovannici et al., 2019, Elife
+
+clear; 
+% folder where all the files are located.
+foldername = 'F:\.shortcut-targets-by-id\1hAipi84k--6-WdgJp-H6kvKO_IsueAHX\toShareWithJonBoulanger\to_reg';
+         
+addpath(genpath('../NoRMCorre'));               % add the NoRMCorre motion correction package to MATLAB path
+gcp;                                            % start a parallel engine
+filetype = 'tif'; % type of files to be processed
+        % Types currently supported .tif/.tiff, .h5/.hdf5, .raw, .avi, and .mat files
+files = subdir(fullfile(foldername,['*.',filetype]));   % list of filenames (will search all subdirectories)
+FOV = size(read_file(files(1).name,1,1));
+numFiles = length(files);
+
+%% Set registration options 
+% register files one by one. use template obtained from file n to
+% initialize template of file n + 1; 
+output_type = 'tiff';                               % format to save registered files
+options_mc = NoRMCorreSetParms('d1',FOV(1),'d2',FOV(2),'grid_size',[128,128],'init_batch',200,...
+                'overlap_pre',32,'mot_uf',4,'bin_width',200,'max_shift',24,'max_dev',8,'us_fac',50,...
+                'output_type',output_type);
+
+%% Register two-color videos 
+append = '_reg';
+template = [];
+col_shift = [];
+for i = 1:numFiles
+    fullname = files(i).name;
+    [folder_name,file_name,ext] = fileparts(fullname);
+    output_filename = fullfile(folder_name,[file_name,append,'.',output_type]);
+    options_mc = NoRMCorreSetParms(options_mc,'output_filename',output_filename,'h5_filename','','tiff_filename',''); % update output file name
+    [M,shifts,template,options_mc,col_shift] = normcorre_batch_even(fullname,options_mc,template);
+    % save shifts of each file at the respective folder
+    % save(fullfile(folder_name,[file_name,'_shifts',append,'.mat']),'shifts','-v7.3');
+end
