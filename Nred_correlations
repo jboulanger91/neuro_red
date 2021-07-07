@@ -1,0 +1,369 @@
+
+%%%%%%%%%%%%%%%%%%%%%%
+%%    KEY SCRIPT    %%
+%%%%%%%%%%%%%%%%%%%%%%
+%v0.2/05/3/2021
+%Spatial correlation analyses as in Boulanger-Weill et al. 2017
+
+%% ----PREAMBLE -----%
+clear all; close all; clc;
+set(0,'DefaultFigureWindowStyle','docked');
+set(0,'DefaultAxesFontName', 'FreeSans'); set(0,'DefaultAxesFontSize', 14); %Axes
+set(0,'DefaultTextFontname', 'FreeSans'); set(0,'DefaultTextFontSize', 14); %Text
+
+%Constants
+export=0;                        % Print Rasters using the Display_Raster_Function
+binsNumber=11;                   % Number of bins for for distance/correlation subplots, 11=20µm bins
+bins=linspace(0,200,binsNumber);
+binsNumber_x=21;
+bins_x=linspace(-200,200,binsNumber_x);
+
+%% ----LOAD RASTERS/ALL CELLS-----%
+%PC path
+%data_path='F:\.shortcut-targets-by-id\1hAipi84k--6-WdgJp-H6kvKO_IsueAHX\toShareWithJonBoulanger\data\';
+%Mac path
+data_path='/Volumes/GoogleDrive/.shortcut-targets-by-id/1hAipi84k--6-WdgJp-H6kvKO_IsueAHX/toShareWithJonBoulanger/data/'; 
+
+listing=dir(data_path);
+fish_idx=0;
+for file_idx=1:size(listing,1)
+    temp_name=listing(file_idx).name;
+    if contains(temp_name,'_green_reg_ALL_CELLS.mat')
+        fish_idx=fish_idx+1;
+        %Fish name
+        strfind(temp_name,'_green_reg_ALL_CELLS.mat'); Fish{fish_idx}.name=temp_name(10:12);
+        %Load data
+        Fish{fish_idx}.allcells=load([data_path temp_name]); Fish{fish_idx}.raster=load([data_path temp_name(1:23) 'RASTER.mat']);
+        %Load green/red avg'ed stacks
+        path_base=temp_name(1:13); Fish{fish_idx}.path_base=[data_path path_base];
+        Fish{fish_idx}.redimg=imread([data_path path_base 'red_reg_avg.tif']); Fish{fish_idx}.greenimg=imread([data_path path_base 'green_reg_avg.tif']);
+    end
+end
+
+%% ----CELL TYPE CLASSIFICATION-----%
+for fish_idx=1:length(Fish)
+    %AllCells temp
+    allCells_temp=Fish{fish_idx}.allcells;
+    %Num cells
+    red_img=Fish{fish_idx}.redimg; green_img=Fish{fish_idx}.greenimg;
+    %Gamma adjustment
+    red_img = imadjust(red_img,[],[],0.75); green_img = imadjust(green_img,[],[],0.5);
+    %Plot montage
+    figure;
+    C = imfuse(red_img,green_img,'falsecolor','Scaling','joint','ColorChannels',[1 2 0]);
+    imshow(C);
+    for idx_cell=1:Fish{fish_idx}.allcells.cell_number
+        %Read value
+        red_mean_val(idx_cell)=mean(red_img(Fish{fish_idx}.allcells.cells{idx_cell}));
+        green_mean_val(idx_cell)=mean(green_img(Fish{fish_idx}.allcells.cells{idx_cell}));
+        %Values distribution
+        %figure;
+        %subplot(1,2,1); histogram(red_mean_val,50); axis square; title('Red values');
+        %subplot(1,2,2); histogram(green_mean_val,50); axis square; title('Green values');
+        %Plot the perimeters in the appropriate color
+        verts=[allCells_temp.cell_per{idx_cell}(:,1), allCells_temp.cell_per{idx_cell}(:,2)];
+        faces=1:1:length(verts);
+        if  red_mean_val(idx_cell)>10
+            Fish{fish_idx}.allcells.type(idx_cell)=1;
+            patch('Faces',faces,'Vertices',verts,'FaceColor','none','EdgeColor','red');
+        else
+            Fish{fish_idx}.allcells.type(idx_cell)=0;
+            patch('Faces',faces,'Vertices',verts,'FaceColor','none','EdgeColor','green');
+        end
+        %Label Hox5 cells
+        if  ismember(idx_cell,allCells_temp.ROIRed)
+            patch('Faces',faces,'Vertices',verts,'FaceColor','none','EdgeColor','magenta','LineWidth',2);
+        end
+    end
+    %Export color classification
+    export_fig([Fish{fish_idx}.path_base 'cell_types.pdf'], '-painters','-pdf')
+end
+
+%% ----CORRELATION/DISTANCE ANALYSES-----%
+for fish_idx=1:length(Fish)
+    %Compute correlation matrix
+    [corr_mat,threshold]=corrmat_threshold(Fish{fish_idx}.raster.raster,99);
+    cells_per=Fish{fish_idx}.allcells.cell_per;
+    numcell=Fish{fish_idx}.allcells.cell_number;
+    
+    %% Example of correlation spatial structure for example cells
+    %Find random red cells
+    red_cells=find(Fish{fish_idx}.allcells.type);
+    red_sample=randsample(red_cells,length(Fish{fish_idx}.allcells.ROIRed));
+    %Correlation min and max
+    mincorr=-0.2; maxcorr=1; alpha=1;
+    close all
+    f1=figure; f2=figure; f3=figure;
+    for idx_cell=1:length(red_sample)
+        %Random example cells
+        if idx_cell<=4
+            set(0, 'CurrentFigure', f1)
+            subplot(2,4,idx_cell)
+            corr_vals=corr_mat(red_sample(idx_cell),:);
+            subsample=0; %Only labels the cell of interest, not the subsamples examples
+            imshow(C)
+            plotcorrelationmap(subsample,red_sample,red_sample(idx_cell),numcell,corr_vals,cells_per,alpha,mincorr,maxcorr)
+            title('Random red+ cell')
+            %Hox5 cells
+            subplot(2,4,idx_cell+4)
+            corr_vals=corr_mat(Fish{fish_idx}.allcells.ROIRed(idx_cell),:);
+            subsample=1; %Only labels the cell of interest, not the subsamples examples
+            imshow(C)
+            plotcorrelationmap(subsample,Fish{fish_idx}.allcells.ROIRed,Fish{fish_idx}.allcells.ROIRed(idx_cell),numcell,corr_vals,cells_per,alpha,mincorr,maxcorr)
+            title('Hox5/red+ cell')
+            %If too many red cells,
+        elseif idx_cell>4 && idx_cell<9
+            set(0, 'CurrentFigure', f2)
+            idx_cell_temp=idx_cell-4;
+            %Random example cells
+            subplot(2,4,idx_cell_temp)
+            corr_vals=corr_mat(red_sample(idx_cell),:);
+            subsample=0; %Only labels the cell of interest, not the subsamples examples
+            imshow(C)
+            plotcorrelationmap(subsample,red_sample,red_sample(idx_cell),numcell,corr_vals,cells_per,alpha,mincorr,maxcorr)
+            title('Random red+ cell')
+            %Hox5 cells
+            subplot(2,4,idx_cell_temp+4)
+            corr_vals=corr_mat(Fish{fish_idx}.allcells.ROIRed(idx_cell),:);
+            subsample=1; %Only labels the cell of interest, not the subsamples examples
+            imshow(C)
+            plotcorrelationmap(subsample,Fish{fish_idx}.allcells.ROIRed,Fish{fish_idx}.allcells.ROIRed(idx_cell),numcell,corr_vals,cells_per,alpha,mincorr,maxcorr)
+            title('Hox5/red+ cell')
+        elseif idx_cell>8
+            set(0, 'CurrentFigure', f3)
+            idx_cell_temp=idx_cell-8;
+            %Random example cells
+            subplot(2,4,idx_cell_temp)
+            corr_vals=corr_mat(red_sample(idx_cell),:);
+            subsample=0; %Only labels the cell of interest, not the subsamples examples
+            imshow(C)
+            plotcorrelationmap(subsample,red_sample,red_sample(idx_cell),numcell,corr_vals,cells_per,alpha,mincorr,maxcorr)
+            title('Random red+ cell')
+            %Hox5 cells
+            subplot(2,4,idx_cell_temp+4)
+            corr_vals=corr_mat(Fish{fish_idx}.allcells.ROIRed(idx_cell),:);
+            subsample=1; %Only labels the cell of interest, not the subsamples examples
+            imshow(C)
+            plotcorrelationmap(subsample,Fish{fish_idx}.allcells.ROIRed,Fish{fish_idx}.allcells.ROIRed(idx_cell),numcell,corr_vals,cells_per,alpha,mincorr,maxcorr)
+            title('Hox5/red+ cell')
+        end
+    end
+    %Export figures
+    if length(red_sample)<=4
+        set(0, 'CurrentFigure', f1)
+        export_fig([Fish{fish_idx}.path_base 'correlation_maps.pdf'], '-painters','-pdf')
+    elseif length(red_sample)>4 &&  length(red_sample)<9
+        set(0, 'CurrentFigure', f1)
+        export_fig([Fish{fish_idx}.path_base 'correlation_maps.pdf'], '-painters','-pdf')
+        set(0, 'CurrentFigure', f2)
+        export_fig([Fish{fish_idx}.path_base 'correlation_maps_2.pdf'], '-painters','-pdf')
+    else
+        set(0, 'CurrentFigure', f1)
+        export_fig([Fish{fish_idx}.path_base 'correlation_maps.pdf'], '-painters','-pdf')
+        set(0, 'CurrentFigure', f2)
+        export_fig([Fish{fish_idx}.path_base 'correlation_maps_2.pdf'], '-painters','-pdf')
+        set(0, 'CurrentFigure', f3)
+        export_fig([Fish{fish_idx}.path_base 'correlation_maps_3.pdf'], '-painters','-pdf')
+    end
+    
+    %% Spatial distribution of significant correlations
+    %% Distances between each cells
+    distances=Fish{fish_idx}.allcells.distances;
+    distances(logical(eye(size(distances))))=NaN;
+    %Bin values
+    prct_corr_bin=zeros(numcell,length(bins)-1);
+    for idx_cell=1:numcell
+        highcorr=find(corr_mat(idx_cell,:)>threshold);
+        dist_cell=distances(idx_cell,:);
+        for bin_idx=1:length(bins)-1
+            %total number of cells within this bin
+            cells_bin=find(dist_cell>bins(bin_idx) & dist_cell<bins(bin_idx)+20);
+            total_cells_bin=length(cells_bin);
+            %significantly correlated cells in this bin
+            highcorr_bin=highcorr(ismember(highcorr,cells_bin));
+            prct_corr_bin(idx_cell,bin_idx)=length(highcorr_bin)/total_cells_bin*100;
+        end
+    end
+    
+    %% Distance along the x (A/P) axis
+    for i=1:numcell
+        img=zeros(size(Fish{fish_idx}.allcells.avg));
+        img(Fish{fish_idx}.allcells.cells{i})=1;
+        junk=regionprops(img,'Centroid');
+        centers{i}=[junk.Centroid(1) junk.Centroid(2)];
+    end
+    distances_x=zeros(numcell);
+    for i=1:numcell
+        for j=1:numcell
+            distances_x(i,j)=(centers{i}(1)-centers{j}(1))*Fish{fish_idx}.allcells.pixelLengthX;
+        end
+    end
+    distances_x(logical(eye(size(distances))))=NaN;
+    %Bin values
+    prct_corr_bin_x=zeros(numcell,length(bins_x));
+    for idx_cell=1:numcell
+        highcorr=find(corr_mat(idx_cell,:)>threshold);
+        dist_cell=distances_x(idx_cell,:);
+        for bin_idx=1:length(bins_x)
+            %total number of cells within this bin
+            cells_bin=find(dist_cell>bins_x(bin_idx) & dist_cell<bins_x(bin_idx)+20);
+            total_cells_bin=length(cells_bin);
+            %significantly correlated cells in this bin
+            highcorr_bin=highcorr(ismember(highcorr,cells_bin));
+            prct_corr_bin_x(idx_cell,bin_idx)=length(highcorr_bin)/total_cells_bin*100;
+        end
+    end
+    
+    %% Compute mean/sem for the three types of cells, absolute distance
+    %Hox+/Red+/GCaMP+
+    hox5_mean=nanmean(prct_corr_bin(Fish{fish_idx}.allcells.ROIRed,:),1);
+    hox5_SEM=nanstd(prct_corr_bin(Fish{fish_idx}.allcells.ROIRed,:),1)/sqrt(length(Fish{fish_idx}.allcells.ROIRed));
+    %GCaMP+
+    greencells=find(Fish{fish_idx}.allcells.type==0);
+    green_mean=nanmean(prct_corr_bin(greencells,:),1);
+    green_SEM=nanstd(prct_corr_bin(greencells,:),1)/sqrt(length(greencells));
+    %Red+/GCaMP+
+    %Remove the Hox5 cells
+    red_cells_temp=red_cells;
+    red_cells_temp(ismember(red_cells_temp,Fish{fish_idx}.allcells.ROIRed))=[];
+    red_mean=nanmean(prct_corr_bin(red_cells_temp,:),1);
+    red_SEM=nanstd(prct_corr_bin(red_cells_temp,:),1)/sqrt(length(red_cells_temp));
+    
+    %Plot the distributions
+    figure;
+    subplot(1,3,1); bincoorboundedline(hox5_mean,hox5_SEM,'Hox5 neurons','b',0)
+    subplot(1,3,2); bincoorboundedline(green_mean,green_SEM,'GCamP neurons','g',0)
+    subplot(1,3,3); bincoorboundedline(red_mean,red_SEM,'GCamP+/Red+ neurons','r',0)
+    
+    %Export distributions
+    plot2svg([Fish{fish_idx}.path_base 'corr_distributions.svg'])
+    
+    %% Compute mean/sem for the three types of cells, A/P distance
+    %Hox+/Red+/GCaMP+
+    hox5_mean=nanmean(prct_corr_bin_x(Fish{fish_idx}.allcells.ROIRed,:),1);
+    hox5_SEM=nanstd(prct_corr_bin_x(Fish{fish_idx}.allcells.ROIRed,:),1)/sqrt(length(Fish{fish_idx}.allcells.ROIRed));
+    %GCaMP+
+    greencells=find(Fish{fish_idx}.allcells.type==0);
+    green_mean=nanmean(prct_corr_bin_x(greencells,:),1);
+    green_SEM=nanstd(prct_corr_bin_x(greencells,:),1)/sqrt(length(greencells));
+    %Red+/GCaMP+
+    %Remove the Hox5 cells
+    red_cells_temp=red_cells;
+    red_cells_temp(ismember(red_cells_temp,Fish{fish_idx}.allcells.ROIRed))=[];
+    red_mean=nanmean(prct_corr_bin_x(red_cells_temp,:),1);
+    red_SEM=nanstd(prct_corr_bin_x(red_cells_temp,:),1)/sqrt(length(red_cells_temp));
+    
+    %Plot the distributions
+    figure;
+    subplot(1,3,1); bincoorboundedline(hox5_mean,hox5_SEM,'Hox5 neurons','b',1)
+    subplot(1,3,2); bincoorboundedline(green_mean,green_SEM,'GCamP neurons','g',1)
+    subplot(1,3,3); bincoorboundedline(red_mean,red_SEM,'GCamP+/Red+ neurons','r',1)
+    
+    %Export distributions
+    %plot2svg([Fish{fish_idx}.path_base 'corr_distributions_ap.svg'])
+    export_fig([Fish{fish_idx}.path_base 'corr_distributions_ap.pdf'], '-painters','-pdf')
+end
+
+%% ----CORRELATION/DISTANCE ANALYSES-----%
+%Rq: The problem with comparing the Hox+ to all Hox- is that any potential
+%local effect can be suppressed by averaging cells that are distant to the
+%site of injection. Potential border effects can also arise but taking into
+%account cells located on the edges.
+clear centers
+win=30; %each cell is abt 15pix in diameter
+
+for fish_idx=4%1:length(Fish)
+    
+    %% Compute correlation matrix
+    [corr_mat,threshold]=corrmat_threshold(Fish{fish_idx}.raster.raster,99);
+    cells_per=Fish{fish_idx}.allcells.cell_per;
+    numcell=Fish{fish_idx}.allcells.cell_number;
+    
+    %% Distance along the x (A/P) axis
+    for i=1:numcell
+        img=zeros(size(Fish{fish_idx}.allcells.avg));
+        img(Fish{fish_idx}.allcells.cells{i})=1;
+        junk=regionprops(img,'Centroid');
+        centers(i,:)=[junk.Centroid(1) junk.Centroid(2)];
+    end
+    
+    %% Compute correlation distribution 
+    for i=1:numcell
+        for j=1:numcell
+            distances_x(i,j)=(centers(i,1)-centers(j,1))*Fish{fish_idx}.allcells.pixelLengthX;
+        end
+    end
+    distances_x(logical(eye(size(distances))))=NaN;
+    
+    %Bin values
+    prct_corr_bin_x=zeros(numcell,length(bins_x));
+    for idx_cell=1:numcell
+        highcorr=find(corr_mat(idx_cell,:)>threshold);
+        dist_cell=distances_x(idx_cell,:);
+        for bin_idx=1:length(bins_x)
+            %total number of cells within this bin
+            cells_bin=find(dist_cell>bins_x(bin_idx) & dist_cell<bins_x(bin_idx)+20);
+            total_cells_bin=length(cells_bin);
+            %significantly correlated cells in this bin
+            highcorr_bin=highcorr(ismember(highcorr,cells_bin));
+            prct_corr_bin_x(idx_cell,bin_idx)=length(highcorr_bin)/total_cells_bin*100;
+        end
+    end
+    
+    %% For each ROIRed cell, pick up their neighbors and their type/corr. profiles
+    figure 
+    for idx_cell=1:4%length(Fish{fish_idx}.allcells.ROIRed)
+        position_x_cell=centers(Fish{fish_idx}.allcells.ROIRed(idx_cell),1);
+        [neighbors_idx,~]=find(centers(:,1)>position_x_cell-win & centers(:,1)<position_x_cell+win);
+        %Find neighbors of each type remove the Hox+ 
+        hox_neighbors=intersect(Fish{fish_idx}.allcells.ROIRed,neighbors_idx);
+        green_neighbors=intersect(find(Fish{fish_idx}.allcells.type==0),neighbors_idx);       
+        green_neighbors(ismember(green_neighbors,hox_neighbors))=[];        
+        red_neighbors=intersect(find(Fish{fish_idx}.allcells.type==1),neighbors_idx);         
+        red_neighbors(ismember(red_neighbors,hox_neighbors))=[]; 
+        
+        %% Compute mean/sem for the three types of cells, absolute distance
+        %Hox+/Red+/GCaMP+
+        hox5=prct_corr_bin_x(Fish{fish_idx}.allcells.ROIRed(idx_cell),:);
+        %GCaMP+
+        green_mean=nanmean(prct_corr_bin_x(green_neighbors,:),1);
+        green_SEM=nanstd(prct_corr_bin_x(green_neighbors,:),1)/sqrt(length(green_neighbors));
+        %Red+/GCaMP+
+        red_mean=nanmean(prct_corr_bin_x(red_neighbors,:),1);
+        red_SEM=nanstd(prct_corr_bin_x(red_neighbors,:),1)/sqrt(length(red_neighbors));
+        
+        %Plot the distributions side by side with the spatial distributions     
+        subplot(2,4,idx_cell)
+        
+        dist=linspace(-10,10,21); 
+        plot(dist,hox5,'b'); hold on
+        set(gca,'XTick',[-10 -7.5 -5 -2.5 0 2.5 5 7.5 10])
+        set(gca,'XTickLabel',{'-200','-150','-100','-50','0','50','100','150','200'}); box off
+        xlabel('Distance in um, Left=Anterior'); ylabel('% of significant correlations');
+        set(findall(gca), 'LineWidth', 1.5); axis square
+        axis([-10,10,0,100])
+        bincoorboundedline(green_mean,green_SEM,'','g',1)
+        bincoorboundedline(red_mean,red_SEM,'','r',1)
+        legend('Hox5+ neurons','GCaMP+/Red-','','GCaMP+/Red+','','Location','northoutside')
+        
+        %Spatial distribution for the Hox5 cell of interest 
+        subplot(2,4,idx_cell+4)
+        corr_vals=corr_mat(Fish{fish_idx}.allcells.ROIRed(idx_cell),:);
+        subsample=1; %Only labels the cell of interest, not the subsamples examples
+        imshow(C)
+        
+        if idx_cell==4
+            colorbarplot=1;
+        else 
+            colorbarplot=0; 
+        end
+        plotcorrelationmap(subsample,Fish{fish_idx}.allcells.ROIRed,Fish{fish_idx}.allcells.ROIRed(idx_cell),numcell,corr_vals,cells_per,alpha,mincorr,maxcorr,colorbarplot)
+        title('Hox5/red+ cell')
+    end
+    %Export 
+    export_fig([Fish{fish_idx}.path_base 'corr_distributions_ap_local-nullmodel.pdf'], '-painters','-pdf')    
+end
+
+%Todo: 
+%Double check functions 
+%Avoid re-computing the distances/correlations for speed purposes
