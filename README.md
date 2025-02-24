@@ -5,15 +5,15 @@ Jonathan Boulanger-Weill, PhD, Harvard University
 
 Used in: 
 Functional interactions between newborn and mature neurons leading to integration into established neuronal circuits
-J Boulanger-Weill, V Candat, A Jouary, SA Romano, V Pérez-Schuster, ...
+**J Boulanger-Weill**, V Candat, A Jouary, SA Romano, V Pérez-Schuster, ...
 Current Biology 27 (12), 1707-1720. e5
 
 Synaptic communication mediates the assembly of a self-organizing circuit that controls reproduction
-M Golan, J Boulanger-Weill, A Pinot, P Fontanaud, A Faucherre, ...
+M Golan, **J Boulanger-Weill**, A Pinot, P Fontanaud, A Faucherre, ...
 Science Advances 7 (8), eabc8475
 
 Position-independent functional refinement within the vagus motor topographic map
-T Kaneko, J Boulanger-Weill, AJ Isabella, CB Moens
+T Kaneko, **J Boulanger-Weill**, AJ Isabella, CB Moens
 Cell reports 43 (10)
 
 To compare calcium responses of labeled neuronal sub-populations 
